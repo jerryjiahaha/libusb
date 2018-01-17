@@ -489,6 +489,13 @@ typedef BOOL (WINAPI *WinUsb_SetPipePolicy_t)(
 	ULONG ValueLength,
 	PVOID Value
 );
+typedef BOOL (WINAPI *WinUsb_GetPipePolicy_t)(
+	WINUSB_INTERFACE_HANDLE InterfaceHandle,
+	UCHAR PipeID,
+	ULONG PolicyType,
+	ULONG ValueLength,
+	PVOID Value
+);
 typedef BOOL (WINAPI *WinUsb_WritePipe_t)(
 	WINUSB_INTERFACE_HANDLE InterfaceHandle,
 	UCHAR PipeID,

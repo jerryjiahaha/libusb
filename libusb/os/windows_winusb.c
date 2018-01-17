@@ -104,6 +104,8 @@ static int composite_copy_transfer_data(int sub_api, struct usbi_transfer *itran
 
 static usbi_mutex_t autoclaim_lock;
 
+static WinUsb_GetPipePolicy_t GetPipePolicy[SUB_API_MAX];
+
 // API globals
 static HMODULE WinUSBX_handle = NULL;
 static struct winusb_interface WinUSBX[SUB_API_MAX];
@@ -2020,7 +2022,9 @@ static int winusbx_init(struct libusb_context *ctx)
 	LibK_GetProcAddress_t pLibK_GetProcAddress = NULL;
 	LibK_GetVersion_t pLibK_GetVersion;
 
+	usbi_dbg("loading library libusbK");
 	h = LoadLibraryA("libusbK");
+	h = NULL;
 
 	if (h == NULL) {
 		usbi_info(ctx, "libusbK DLL is not available, will use native WinUSB");
@@ -2074,6 +2078,19 @@ static int winusbx_init(struct libusb_context *ctx)
 		}
 	}
 
+	usbi_warn(ctx, "check policy..., native_winusb: %d", native_winusb);
+	for (int j = 0; j < SUB_API_MAX; j++)
+	{
+		GetPipePolicy[j] = NULL;
+		if (!native_winusb)
+		{
+			pLibK_GetProcAddress((PVOID *)(GetPipePolicy + j), j, KUSB_FNID_GetPipePolicy);
+		}
+		else
+		{
+			GetPipePolicy[j] = (WinUsb_GetPipePolicy_t)GetProcAddress(h, "WinUsb_GetPipePolicy");
+		}
+	}
 	WinUSBX_handle = h;
 	return LIBUSB_SUCCESS;
 }
@@ -2183,10 +2200,13 @@ static int winusbx_configure_endpoints(int sub_api, struct libusb_device_handle 
 
 	CHECK_WINUSBX_AVAILABLE(sub_api);
 
+	usbi_dbg("configure endpoints...");
+
 	// With handle and enpoints set (in parent), we can setup the default pipe properties
 	// see http://download.microsoft.com/download/D/1/D/D1DD7745-426B-4CC3-A269-ABBBE427C0EF/DVC-T705_DDC08.pptx
 	for (i = -1; i < priv->usb_interface[iface].nb_endpoints; i++) {
 		endpoint_address = (i == -1) ? 0 : priv->usb_interface[iface].endpoint[i];
+		usbi_dbg("endpoint_address: %d", endpoint_address);
 		if (!WinUSBX[sub_api].SetPipePolicy(winusb_handle, endpoint_address,
 			PIPE_TRANSFER_TIMEOUT, sizeof(ULONG), &timeout))
 			usbi_dbg("failed to set PIPE_TRANSFER_TIMEOUT for control endpoint %02X", endpoint_address);
@@ -2214,6 +2234,32 @@ static int winusbx_configure_endpoints(int sub_api, struct libusb_device_handle 
 			AUTO_CLEAR_STALL, sizeof(UCHAR), &policy))
 			usbi_dbg("failed to enable AUTO_CLEAR_STALL for endpoint %02X", endpoint_address);
 	}
+
+	if (GetPipePolicy == NULL) {
+		usbi_dbg("function is none!");
+		return LIBUSB_SUCCESS;
+	}
+	ULONG policyul = 0;
+	size_t act_len = sizeof(ULONG);
+	if (!GetPipePolicy[sub_api](winusb_handle, 0x82, PIPE_TRANSFER_TIMEOUT, &act_len, &policyul)) {
+		int error_code = GetLastError();
+		usbi_dbg("error code: %d", error_code);
+		printf("error code: %d\n", error_code);
+	}
+	else {
+		usbi_dbg("policy: %ld", policyul);
+		printf("PIPE_TRANSFER_TIMEOUT: %d\n", policyul);
+	}
+	if (!GetPipePolicy[sub_api](winusb_handle, 0x82, MAXIMUM_TRANSFER_SIZE, &act_len, &policyul)) {
+		int error_code = GetLastError();
+		usbi_dbg("error code: %d", error_code);
+		printf("error code: %d\n", error_code);
+	}
+	else {
+		usbi_dbg("policy: %ld", policyul);
+		printf("MAXIMUM_TRANSFER_SIZE: %ld\n", policyul);
+	}
+
 
 	return LIBUSB_SUCCESS;
 }
@@ -2570,7 +2616,7 @@ static int winusbx_submit_bulk_transfer(int sub_api, struct usbi_transfer *itran
 		return LIBUSB_ERROR_NOT_FOUND;
 	}
 
-	usbi_dbg("matched endpoint %02X with interface %d", transfer->endpoint, current_interface);
+	usbi_dbg("matched endpoint %02X with interface %d, sub_api: %d", transfer->endpoint, current_interface, sub_api);
 
 	transfer_priv->handle = winusb_handle = handle_priv->interface_handle[current_interface].api_handle;
 	overlapped = transfer_priv->pollable_fd.overlapped;
