@@ -1782,6 +1782,8 @@ static int winusb_submit_transfer(struct usbi_transfer *itransfer)
 	int (*transfer_fn)(int, struct usbi_transfer *);
 	short events;
 
+	usbi_dbg("transfer %p %d", transfer, transfer->type);
+
 	switch (transfer->type) {
 	case LIBUSB_TRANSFER_TYPE_CONTROL:
 		events = (transfer->buffer[0] & LIBUSB_ENDPOINT_IN) ? POLLIN : POLLOUT;
@@ -2001,6 +2003,14 @@ const struct windows_usb_api_backend usb_api_backend[USB_API_MAX] = {
 	},
 };
 
+static int get_env_force_winusb(void)
+{
+	const char *force_winusb = getenv("FORCE_WINUSB");
+	if (force_winusb) {
+		return atoi(force_winusb);
+	}
+	return 0;
+}
 
 /*
  * WinUSB-like (WinUSB, libusb0/libusbK through libusbk DLL) API functions
@@ -2022,9 +2032,16 @@ static int winusbx_init(struct libusb_context *ctx)
 	LibK_GetProcAddress_t pLibK_GetProcAddress = NULL;
 	LibK_GetVersion_t pLibK_GetVersion;
 
-	usbi_dbg("loading library libusbK");
-	h = LoadLibraryA("libusbK");
-	h = NULL;
+	if (get_env_force_winusb()) {
+		usbi_dbg("use winusb.dll instead of libusbk.dll forcely");
+		h = NULL;
+	}
+	else {
+		usbi_dbg("loading library libusbK");
+		h = LoadLibraryA("libusbK");
+	}
+//	h = LoadLibraryA("libusbK");
+//	h = NULL;
 
 	if (h == NULL) {
 		usbi_info(ctx, "libusbK DLL is not available, will use native WinUSB");
@@ -2235,31 +2252,32 @@ static int winusbx_configure_endpoints(int sub_api, struct libusb_device_handle 
 			usbi_dbg("failed to enable AUTO_CLEAR_STALL for endpoint %02X", endpoint_address);
 	}
 
-	if (GetPipePolicy == NULL) {
-		usbi_dbg("function is none!");
+	UCHAR rawio = true;
+	if (!WinUSBX[sub_api].SetPipePolicy(winusb_handle, 0x82, RAW_IO, sizeof(UCHAR), &rawio)) {
+		usbi_dbg("failed to enable raw_io");
+	}
+
+	if (GetPipePolicy == NULL)
+	{
+		usbi_dbg("GetPipPolicy is not available");
 		return LIBUSB_SUCCESS;
 	}
 	ULONG policyul = 0;
-	size_t act_len = sizeof(ULONG);
+	ULONG act_len = sizeof(ULONG);
 	if (!GetPipePolicy[sub_api](winusb_handle, 0x82, PIPE_TRANSFER_TIMEOUT, &act_len, &policyul)) {
 		int error_code = GetLastError();
-		usbi_dbg("error code: %d", error_code);
-		printf("error code: %d\n", error_code);
+		usbi_dbg("PIPE_TRANSFER_TIMEOUT error code: %d", error_code);
 	}
 	else {
-		usbi_dbg("policy: %ld", policyul);
-		printf("PIPE_TRANSFER_TIMEOUT: %d\n", policyul);
+		usbi_dbg("PIPE_TRANSFER_TIMEOUT: %ld", policyul);
 	}
 	if (!GetPipePolicy[sub_api](winusb_handle, 0x82, MAXIMUM_TRANSFER_SIZE, &act_len, &policyul)) {
 		int error_code = GetLastError();
-		usbi_dbg("error code: %d", error_code);
-		printf("error code: %d\n", error_code);
+		usbi_dbg("MAXIMUM_TRANSFER_SIZE error code: %d", error_code);
 	}
 	else {
-		usbi_dbg("policy: %ld", policyul);
-		printf("MAXIMUM_TRANSFER_SIZE: %ld\n", policyul);
+		usbi_dbg("MAXIMUM_TRANSFER_SIZE: %ld", policyul);
 	}
-
 
 	return LIBUSB_SUCCESS;
 }

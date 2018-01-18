@@ -653,7 +653,7 @@ static int windows_init(struct libusb_context *ctx)
 			usbi_dbg("UsbDk backend is available");
 			usbdk_available = true;
 		} else {
-			usbi_info(ctx, "UsbDk backend is not available");
+			usbi_info(ctx, "UsbDk backend is not available, %s", libusb_error_name(r));
 			// Do not report this as an error
 			r = LIBUSB_SUCCESS;
 		}

@@ -655,6 +655,8 @@ static int usbdk_submit_transfer(struct usbi_transfer *itransfer)
 	int (*transfer_fn)(struct usbi_transfer *);
 	short events;
 
+	usbi_dbg("transfer %p %d", transfer, transfer->type);
+
 	switch (transfer->type) {
 	case LIBUSB_TRANSFER_TYPE_CONTROL:
 		events = (transfer->buffer[0] & LIBUSB_ENDPOINT_IN) ? POLLIN : POLLOUT;

@@ -1211,6 +1211,16 @@ int usbi_clear_event(struct libusb_context *ctx)
 	return 0;
 }
 
+#if 0 // TODO
+/** \ingroup libusb_dev
+ * Configure usb endpoint
+ * \param dev_handle the device handle to close
+ */
+int API_EXPORTED libusb_configure_endpoint(libusb_device *dev)
+{
+}
+#endif 
+
 /** \ingroup libusb_dev
  * Open a device and obtain a device handle. A handle allows you to perform
  * I/O on the device in question.
